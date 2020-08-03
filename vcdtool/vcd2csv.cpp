@@ -54,52 +54,88 @@ void print_scope_signals(VCDFile * trace, VCDScope * scope, std::string local_pa
 void print_activity(VCDFile * trace, VCDScope * scope, std::string local_parent)
 {
 	int end_time=trace->get_timestamps()->back();
-	int sp=0;
-	int last_nz=0;
-	int last_z=0;
+	int sp;
+	int last_nz;
+	int last_z;
 	int delta;
-	int tr=0;
+	int tr;
 	int current=-1;
+	int b;
+	int value;
+	int size;
 	VCDSignalValues * signal_values;
 	// For each signal
 
     for(VCDSignal * signal : scope -> signals) {
-        std::cout <<  local_parent << "." << signal -> reference;
-
 	// What to do if vector, try dumbest option, just for on each bit
-	for (int b=0; b < signal->size; b++) {
-        	// std::cout << std::endl;
-		signal_values = trace->get_signal_values(signal -> hash); 
-		for (VCDTimedValue * v : *signal_values) {
-    		//	std::cout << "Time: " << value->time << "\tValue : " << value->value->get_value_bit()  << " (" << value->value->get_value_vector() << ")" << std::endl;
-			if (v->value->get_value_bit() && (0x1 << b)) 
-			{
-			  //std::cout << "non Zero" << std::endl;
-			  last_nz=v->time;
-		  	} else 
-			{
-			  last_z=v->time;
-			  sp += last_z - last_nz;
-			  //std::cout << "sp:" << sp << std::endl;
-			}
-			if (v->value->get_value_bit() != current){
-			  current=v->value->get_value_bit();
-			  tr+=1;
-			}
-		}
-		if (signal_values->back()->value->get_value_bit()) 
-		{
-		  //std::cout << "non Zero " << sp << " " << end_time << " -  " << last_nz <<  std::endl;
-		  //last_nz=value->time;
-		  sp += end_time - last_nz;
-		} 
+	for ( b=0; b < signal->size; b++) {
+		tr=0;
+		sp=0;
+		last_z=0;
+		last_nz=0;
+		current=-1;
         	std::cout <<  local_parent << "." << signal -> reference;
         	if(signal -> size > 1) {
         	    std::cout << "[" << b << "]";
         	} else if (signal -> lindex >= 0) {
-        	    std::cout << "[" << signal -> lindex << "]";
+        	    //std::cout << "[" << signal -> lindex << "]";
         	}
-		std::cout << "," << (float)sp/end_time << "," << tr << std::endl;	
+		//std::cout << std::endl;
+		signal_values = trace->get_signal_values(signal -> hash); 
+		for (VCDTimedValue * v : *signal_values) {
+			if (v->value->get_type() == VCD_VECTOR) 
+			{
+			  	size = v->value->get_value_vector()->size();
+				if(b < size) 
+				{
+					value = v->value->get_value_vector()->at(size-b-1);
+					//std::cout << "at(b) ";
+					//for(VCDBit bit: *v->value->get_value_vector()) std::cout << bit;
+				} else {
+					value = ( v->value->get_value_vector()->at(size-1) == VCD_X ) ? VCD_X :  VCD_0 ;
+					//std::cout << "at(size-1) ";
+					//for(VCDBit bit: *v->value->get_value_vector()) std::cout << bit;
+				}
+			} else
+			{
+				value=v->value->get_value_bit();
+				//std::cout << "bit ";
+			}	
+			if (value == VCD_1 ) 
+			{
+			  last_nz=v->time;
+		  	} else if (value == VCD_0)
+			{
+			  last_z=v->time;
+			  if (current == VCD_1) sp += last_z - last_nz;
+			}
+			// printf(" 0x%x 0x%x \n", current, value);
+			if ( value != current ){
+			  if ( (current == VCD_0) || (current ==VCD_1))
+			  	tr+=1;
+			  current=value;
+			}
+		}
+		// Get final value
+		if (signal_values->back()->value->get_type() == VCD_VECTOR) 
+		{
+			if(b < signal_values->back()->value->get_value_vector()->size())
+				value = signal_values->back()->value->get_value_vector()->at(b);
+			else
+				value = signal_values->back()->value->get_value_vector()->at(signal_values->back()->value->get_value_vector()->size()-1);
+		} else
+			value=signal_values->back()->value->get_value_bit();
+		if ( value == VCD_1) 
+		{
+		  //std::cout << "end - lastZero " << sp << " " << end_time << " -  " << last_z <<  std::endl;
+		  //last_nz=value->time;
+		  sp += end_time - last_z;
+		} else if (value == VCD_0) 
+		{
+		  //sp += end_time - last_nz;
+		} 
+		//std::cout << "," << sp << "," << end_time  << "," << (float)sp/end_time << "," << tr << std::endl;	
+		std::cout << "," << (float)sp/end_time << "," << (float)tr << std::endl;	
 	}
     }
 }
@@ -172,7 +208,7 @@ int main (int argc, char** argv)
         }    
         // Print out every signal in every scope.
 		std::cout << "signal,static_probability,toggle" << std::endl;
-        traverse_scope(std::string(""), trace, trace->root_scope, instances, fullpath);
+        	traverse_scope(std::string(""), trace, trace->root_scope, instances, fullpath);
 
         delete trace;
         
